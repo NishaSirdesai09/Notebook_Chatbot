@@ -1,0 +1,12 @@
+/node_modules
+/dist
+*.log
+.env
+!.env.example
+*.tsbuildinfo
+.DS_Store
+
+# Prisma / SQLite
+prisma/dev.db
+prisma/dev.db-journal
+*.sqlite

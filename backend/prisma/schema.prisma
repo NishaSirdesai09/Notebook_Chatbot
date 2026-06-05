@@ -1,0 +1,139 @@
+// Prisma schema for Notebook Chatbot.
+// Using SQLite for zero-setup local development (a single db file).
+// To move to PostgreSQL, change `provider` to "postgresql" and point
+// DATABASE_URL at your instance — the models below are portable.
+//
+// Note: enum-like fields (role, status, visibility, type) are stored as
+// strings to stay portable across SQLite/Postgres. List fields (keyPoints,
+// bullets, options) are stored as JSON-encoded strings because the SQLite
+// connector does not support the Json scalar; on PostgreSQL these can become
+// `Json` or `String[]`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("Student") // Student | Professor | Admin
+  createdAt DateTime @default(now())
+
+  notebooks Notebook[]
+}
+
+model Notebook {
+  id             String   @id @default(uuid())
+  title          String
+  course         String   @default("")
+  description    String   @default("")
+  subject        String   @default("General")
+  visibility     String   @default("Private") // Private | Shared with class
+  files          Int      @default(0)
+  status         String   @default("Processing") // Processing | Ready | Failed
+  color          String   @default("from-brand-500 to-accent-purple")
+  questionsAsked Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  documents Document[]
+  messages  ChatMessage[]
+  summaries Summary[]
+}
+
+model Document {
+  id         String   @id @default(uuid())
+  name       String
+  type       String // pdf | docx | ppt | txt | image | link | youtube | canvas
+  size       String   @default("—")
+  status     String   @default("queued") // queued | extracting | chunking | embedding | indexing | ready | failed
+  pages      Int?
+  uploadedAt DateTime @default(now())
+
+  notebookId String
+  notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+
+  @@index([notebookId])
+}
+
+model ChatMessage {
+  id               String   @id @default(uuid())
+  role             String // user | assistant
+  content          String
+  explanation      String?
+  keyPoints        String? // JSON-encoded string[]
+  practiceQuestion String?
+  notFound         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  notebookId String
+  notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+
+  citations Citation[]
+
+  @@index([notebookId])
+}
+
+model Citation {
+  id       String @id @default(uuid())
+  document String
+  page     Int
+  chapter  String
+  snippet  String
+
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+model Summary {
+  id           String   @id @default(uuid())
+  notebookName String
+  type         String
+  title        String
+  content      String
+  bullets      String // JSON-encoded string[]
+  createdAt    DateTime @default(now())
+
+  notebookId String?
+  notebook   Notebook? @relation(fields: [notebookId], references: [id], onDelete: SetNull)
+}
+
+model QuizQuestion {
+  id          String  @id @default(uuid())
+  question    String
+  type        String // MCQ | Short Answer | True/False
+  options     String? // JSON-encoded string[]
+  answer      String
+  explanation String
+
+  notebookId String?
+}
+
+model ReferenceLink {
+  id       String   @id @default(uuid())
+  url      String
+  title    String
+  category String
+  status   String   @default("Indexing") // Indexed | Indexing | Failed
+  addedAt  DateTime @default(now())
+}
+
+model CanvasCourse {
+  id       String  @id @default(uuid())
+  name     String
+  code     String
+  files    Int     @default(0)
+  selected Boolean @default(false)
+}
