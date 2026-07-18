@@ -15,6 +15,8 @@ Chatbot-Book/
 
 ## Quick Start
 
+**Full audit and roadmap:** see [`docs/AUDIT.md`](docs/AUDIT.md).
+
 You need **4 things** running (each in its own terminal unless noted):
 
 | # | Service | Port | Purpose |
@@ -29,15 +31,18 @@ Open **http://localhost:3000** in your browser (not a file path).
 ### One-time setup
 
 ```bash
-# 1. Install dependencies (from repo root)
+# 1. Start infrastructure (PostgreSQL, Qdrant, Redis)
+docker compose up postgres qdrant redis -d
+
+# 2. Install dependencies (from repo root)
 cd backend && npm install
 cd ../frontend && npm install
 
-# 2. Environment files
-cp backend/.env.example backend/.env          # add DASHLAB_API_KEY from dashlab.studio → Keys tab
+# 3. Environment files
+cp backend/.env.example backend/.env          # add DASHLAB_API_KEY
 cp frontend/.env.example frontend/.env.local
 
-# 3. Database (SQLite — auto-created on first migrate)
+# 4. Database (PostgreSQL — requires docker compose postgres)
 cd backend
 npx prisma migrate dev
 
@@ -49,10 +54,10 @@ ollama pull nomic-embed-text
 
 ### Every time you run the project
 
-**Terminal 1 — Qdrant** (requires Docker Desktop running):
+**Terminal 1 — Infrastructure** (PostgreSQL + Qdrant + Redis):
 
 ```bash
-docker run -p 6333:6333 qdrant/qdrant
+docker compose up postgres qdrant redis -d
 ```
 
 **Terminal 2 — Backend**:
