@@ -1,44 +1,49 @@
-// Prisma schema for Notebook Chatbot.
-// Using SQLite for zero-setup local development (a single db file).
-// To move to PostgreSQL, change `provider` to "postgresql" and point
-// DATABASE_URL at your instance — the models below are portable.
-//
-// Note: enum-like fields (role, status, visibility, type) are stored as
-// strings to stay portable across SQLite/Postgres. List fields (keyPoints,
-// bullets, options) are stored as JSON-encoded strings because the SQLite
-// connector does not support the Json scalar; on PostgreSQL these can become
-// `Json` or `String[]`.
+// Notebook Chatbot — PostgreSQL schema (Milestone 1+)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
 }
 
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      String   @default("Student") // Student | Professor | Admin
-  createdAt DateTime @default(now())
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("Student") // Student | Professor | Admin
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  notebooks Notebook[]
-  settings  UserSettings?
+  notebooks     Notebook[]
+  preferences   UserPreference?
+  refreshTokens RefreshToken[]
+
+  @@index([email])
 }
 
-model UserSettings {
-  id              String  @id @default(uuid())
-  userId          String  @unique
-  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  llmProviderId   String?
-  llmModelId      String?
-  providerApiKeys String? // JSON map: { "openai": "sk-...", "custom": "..." }
-  studyMode       String  @default("balanced")
-  responseLength  String  @default("balanced")
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model UserPreference {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studyMode      String   @default("balanced")
+  responseLength String   @default("balanced")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model Notebook {
@@ -47,45 +52,91 @@ model Notebook {
   course         String   @default("")
   description    String   @default("")
   subject        String   @default("General")
-  visibility     String   @default("Private") // Private | Shared with class
+  visibility     String   @default("Private")
   files          Int      @default(0)
-  status         String   @default("Processing") // Processing | Ready | Failed
+  status         String   @default("Processing")
   color          String   @default("from-brand-500 to-accent-purple")
   questionsAsked Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  ownerId String?
-  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   documents Document[]
   messages  ChatMessage[]
   summaries Summary[]
+
+  @@index([ownerId])
 }
 
 model Document {
-  id           String   @id @default(uuid())
-  name         String
-  type         String // pdf | docx | ppt | txt | image | link | youtube | canvas | reference
-  size         String   @default("—")
-  status       String   @default("queued") // queued | extracting | chunking | embedding | indexing | ready | failed
-  pages        Int?
-  storagePath  String?
-  errorMessage String?
-  uploadedAt   DateTime @default(now())
+  id                 String    @id @default(uuid())
+  name               String
+  type               String
+  mimeType           String?
+  size               String    @default("—")
+  sizeBytes          Int?
+  status             String    @default("queued")
+  processingProgress Int       @default(0)
+  processingStage    String?
+  pages              Int?
+  storageKey         String?
+  storagePath        String?   // legacy local path — prefer storageKey
+  errorMessage       String?
+  uploadedAt         DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  indexedAt          DateTime?
 
-  notebookId String
-  notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+  notebookId       String
+  notebook         Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+  uploadedByUserId String?
+
+  chunks        DocumentChunk[]
+  ingestionJobs IngestionJob[]
 
   @@index([notebookId])
+  @@index([status])
+}
+
+model DocumentChunk {
+  id           String   @id @default(uuid())
+  documentId   String
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunkIndex   Int
+  pageNumber   Int
+  qdrantPointId String
+  tokenCount   Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@unique([documentId, chunkIndex])
+  @@index([documentId])
+}
+
+model IngestionJob {
+  id           String    @id @default(uuid())
+  documentId   String
+  document     Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  status       String    @default("PENDING") // PENDING | ACTIVE | COMPLETED | FAILED | RETRYING
+  progress     Int       @default(0)
+  attemptCount Int       @default(0)
+  startedAt    DateTime?
+  completedAt  DateTime?
+  failedAt     DateTime?
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([documentId])
+  @@index([status])
 }
 
 model ChatMessage {
   id               String   @id @default(uuid())
-  role             String // user | assistant
+  role             String
   content          String
   explanation      String?
-  keyPoints        String? // JSON-encoded string[]
+  keyPoints        Json?
   practiceQuestion String?
   notFound         Boolean  @default(false)
   createdAt        DateTime @default(now())
@@ -117,7 +168,7 @@ model Summary {
   type         String
   title        String
   content      String
-  bullets      String // JSON-encoded string[]
+  bullets      Json
   createdAt    DateTime @default(now())
 
   notebookId String?
@@ -127,12 +178,11 @@ model Summary {
 model QuizQuestion {
   id          String  @id @default(uuid())
   question    String
-  type        String // MCQ | Short Answer | True/False
-  options     String? // JSON-encoded string[]
+  type        String
+  options     Json?
   answer      String
   explanation String
-
-  notebookId String?
+  notebookId  String?
 }
 
 model ReferenceLink {
@@ -140,7 +190,7 @@ model ReferenceLink {
   url      String
   title    String
   category String
-  status   String   @default("Indexing") // Indexed | Indexing | Failed
+  status   String   @default("Indexing")
   addedAt  DateTime @default(now())
 }
 
