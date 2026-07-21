@@ -1,7 +1,7 @@
-import { IsEmail, IsIn, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 import { Role } from '../../../common/types';
 
-export class SignupDto {
+export class RegisterDto {
   @IsString()
   @MinLength(2)
   name: string;
@@ -17,6 +17,9 @@ export class SignupDto {
   role: Role;
 }
 
+/** @deprecated Use RegisterDto — kept for backward-compatible /auth/signup route */
+export class SignupDto extends RegisterDto {}
+
 export class LoginDto {
   @IsEmail()
   email: string;
@@ -24,4 +27,15 @@ export class LoginDto {
   @IsString()
   @MinLength(1)
   password: string;
+}
+
+export class RefreshDto {
+  @IsString()
+  refreshToken: string;
+}
+
+export class LogoutDto {
+  @IsOptional()
+  @IsString()
+  refreshToken?: string;
 }
