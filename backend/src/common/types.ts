@@ -21,6 +21,7 @@ export interface User {
 export interface AuthResult {
   user: User;
   accessToken: string;
+  refreshToken: string;
 }
 
 export interface Notebook {
@@ -45,6 +46,8 @@ export interface DocumentEntity {
   notebookId: string;
   status: DocStatus;
   pages?: number;
+  processingProgress?: number;
+  processingStage?: string;
   uploadedAt: string;
 }
 

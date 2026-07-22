@@ -8,16 +8,4 @@ export class ChatDto {
   @IsString()
   @MinLength(1)
   message: string;
-
-  @IsOptional()
-  @IsString()
-  userId?: string;
-
-  @IsOptional()
-  @IsString()
-  llmProviderId?: string;
-
-  @IsOptional()
-  @IsString()
-  llmModelId?: string;
 }

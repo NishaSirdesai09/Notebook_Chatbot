@@ -1,27 +1,32 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Notebook } from '../../common/types';
+import { AuthorizationService } from '../auth/authorization.service';
 import { CreateNotebookDto } from './dto/notebook.dto';
 
 @Injectable()
 export class NotebooksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly authz: AuthorizationService,
+  ) {}
 
-  async findAll(userId?: string): Promise<Notebook[]> {
+  async findAll(userId: string): Promise<Notebook[]> {
     const rows = await this.prisma.notebook.findMany({
-      where: userId ? { ownerId: userId } : undefined,
+      where: { ownerId: userId },
       orderBy: { updatedAt: 'desc' },
     });
     return rows.map((n) => this.toNotebook(n));
   }
 
-  async findOne(id: string): Promise<Notebook> {
+  async findOne(id: string, userId: string): Promise<Notebook> {
+    await this.authz.assertNotebookOwner(id, userId);
     const notebook = await this.prisma.notebook.findUnique({ where: { id } });
     if (!notebook) throw new NotFoundException(`Notebook ${id} not found`);
     return this.toNotebook(notebook);
   }
 
-  async create(dto: CreateNotebookDto, userId?: string): Promise<Notebook> {
+  async create(dto: CreateNotebookDto, userId: string): Promise<Notebook> {
     const notebook = await this.prisma.notebook.create({
       data: {
         title: dto.title,
@@ -37,9 +42,8 @@ export class NotebooksService {
     return this.toNotebook(notebook);
   }
 
-  async remove(id: string): Promise<{ success: boolean }> {
-    const exists = await this.prisma.notebook.findUnique({ where: { id } });
-    if (!exists) throw new NotFoundException(`Notebook ${id} not found`);
+  async remove(id: string, userId: string): Promise<{ success: boolean }> {
+    await this.authz.assertNotebookOwner(id, userId);
     await this.prisma.notebook.delete({ where: { id } });
     return { success: true };
   }
