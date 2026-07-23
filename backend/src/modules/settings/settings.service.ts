@@ -2,15 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LlmConfigService } from '../llm/llm-config.service';
 
-export type UserSettingsDto = {
-  llmProviderId?: string | null;
-  llmModelId?: string | null;
-  llmApiKey?: string | null;
+export type UserPreferenceDto = {
   studyMode?: string;
   responseLength?: string;
 };
-
-type ApiKeyMap = Record<string, string>;
 
 @Injectable()
 export class SettingsService {
@@ -19,125 +14,59 @@ export class SettingsService {
     private readonly llmConfig: LlmConfigService,
   ) {}
 
-  listLlmCatalog() {
-    return this.llmConfig.listPublicCatalog();
-  }
-
-  private parseApiKeys(raw: string | null | undefined): ApiKeyMap {
-    if (!raw) return {};
-    try {
-      return JSON.parse(raw) as ApiKeyMap;
-    } catch {
-      return {};
-    }
-  }
-
-  private maskApiKeyStatus(keys: ApiKeyMap, providerIds: string[]) {
-    return Object.fromEntries(
-      providerIds.map((id) => [id, Boolean(keys[id]?.trim())]),
-    );
-  }
-
-  async getSettings(userId: string) {
-    const settings = await this.prisma.userSettings.findUnique({ where: { userId } });
-    const defaults = this.llmConfig.resolveDefaultModel();
-    const keys = this.parseApiKeys(settings?.providerApiKeys);
-    const providerId = settings?.llmProviderId ?? defaults.providerId;
-    const embeddingProvider = this.llmConfig.getEmbeddingConfig().providerId;
-
-    return {
-      llmProviderId: providerId,
-      llmModelId: settings?.llmModelId ?? defaults.modelId,
-      studyMode: settings?.studyMode ?? 'balanced',
-      responseLength: settings?.responseLength ?? 'balanced',
-      apiKeyStatus: this.maskApiKeyStatus(keys, [providerId, embeddingProvider]),
-      activeProviderRequiresKey: this.llmConfig.providerRequiresApiKey(providerId),
-      embeddingProviderRequiresKey: this.llmConfig.providerRequiresApiKey(embeddingProvider),
-    };
-  }
-
-  async updateSettings(userId: string, dto: UserSettingsDto) {
+  async getPreferences(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    const existing = await this.prisma.userSettings.findUnique({ where: { userId } });
-    const keys = this.parseApiKeys(existing?.providerApiKeys);
+    const prefs = await this.prisma.userPreference.findUnique({ where: { userId } });
+    return {
+      studyMode: prefs?.studyMode ?? 'balanced',
+      responseLength: prefs?.responseLength ?? 'balanced',
+    };
+  }
 
-    const providerId = dto.llmProviderId ?? existing?.llmProviderId;
-    const modelId = dto.llmModelId ?? existing?.llmModelId;
+  async updatePreferences(userId: string, dto: UserPreferenceDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
 
-    if (providerId && modelId) {
-      const provider = this.llmConfig.getProvider(providerId);
-      const model = provider?.models.find((m) => m.id === modelId);
-      if (!provider || !model) {
-        throw new NotFoundException('Invalid LLM provider or model');
-      }
-    }
-
-    if (dto.llmApiKey !== undefined && providerId) {
-      const trimmed = dto.llmApiKey?.trim() ?? '';
-      if (trimmed) {
-        keys[providerId] = trimmed;
-      } else {
-        delete keys[providerId];
-      }
-    }
-
-    await this.prisma.userSettings.upsert({
+    await this.prisma.userPreference.upsert({
       where: { userId },
       create: {
         userId,
-        llmProviderId: providerId ?? null,
-        llmModelId: modelId ?? null,
-        providerApiKeys: Object.keys(keys).length ? JSON.stringify(keys) : null,
         studyMode: dto.studyMode ?? 'balanced',
         responseLength: dto.responseLength ?? 'balanced',
       },
       update: {
-        llmProviderId: dto.llmProviderId ?? undefined,
-        llmModelId: dto.llmModelId ?? undefined,
-        providerApiKeys: Object.keys(keys).length ? JSON.stringify(keys) : null,
         studyMode: dto.studyMode ?? undefined,
         responseLength: dto.responseLength ?? undefined,
       },
     });
 
-    return this.getSettings(userId);
+    return this.getPreferences(userId);
   }
 
-  async resolveModel(userId?: string) {
-    if (userId) {
-      const settings = await this.getSettings(userId);
-      return { providerId: settings.llmProviderId, modelId: settings.llmModelId };
-    }
+  /** Platform default model — not user-configurable */
+  resolveModel() {
     return this.llmConfig.resolveDefaultModel();
   }
 
-  /** User-saved key first, then server env fallback from llm.providers.json */
-  async resolveApiKey(userId: string | undefined, providerId: string): Promise<string | undefined> {
+  resolveFallbackModels(primary: { providerId: string; modelId: string }) {
+    return this.llmConfig.resolveFallbackModels(primary);
+  }
+
+  /** Platform env keys only — never exposed to students */
+  resolveApiKey(providerId: string): string | undefined {
     const provider = this.llmConfig.getProvider(providerId);
     if (!provider) return undefined;
-
-    if (userId) {
-      const settings = await this.prisma.userSettings.findUnique({ where: { userId } });
-      const keys = this.parseApiKeys(settings?.providerApiKeys);
-      const userKey = keys[providerId]?.trim();
-      if (userKey) return userKey;
-    }
-
     return this.llmConfig.resolveApiKeyFromEnv(provider);
   }
 
-  async resolveApiKeyForNotebook(notebookId: string, providerId: string): Promise<string | undefined> {
-    const notebook = await this.prisma.notebook.findUnique({
-      where: { id: notebookId },
-      select: { ownerId: true },
-    });
-    return this.resolveApiKey(notebook?.ownerId ?? undefined, providerId);
+  resolveEmbeddingApiKey(): string | undefined {
+    const providerId = this.llmConfig.getEmbeddingConfig().providerId;
+    return this.resolveApiKey(providerId);
   }
 
-  async resolveEmbeddingApiKey(userId?: string): Promise<string | undefined> {
-    const providerId = this.llmConfig.getEmbeddingConfig().providerId;
-    return this.resolveApiKey(userId, providerId);
+  async getStudyPreferences(userId: string) {
+    return this.getPreferences(userId);
   }
 }

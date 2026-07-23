@@ -1,22 +1,19 @@
-import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
-import { SettingsService, UserSettingsDto } from './settings.service';
+import { Body, Controller, Get, Patch } from '@nestjs/common';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { AuthUser } from '../../common/types/auth-user';
+import { SettingsService, UserPreferenceDto } from './settings.service';
 
-@Controller('settings')
+@Controller('preferences')
 export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
-  @Get('llm/catalog')
-  catalog() {
-    return this.settingsService.listLlmCatalog();
+  @Get('me')
+  get(@CurrentUser() user: AuthUser) {
+    return this.settingsService.getPreferences(user.id);
   }
 
-  @Get(':userId')
-  get(@Param('userId') userId: string) {
-    return this.settingsService.getSettings(userId);
-  }
-
-  @Patch(':userId')
-  update(@Param('userId') userId: string, @Body() dto: UserSettingsDto) {
-    return this.settingsService.updateSettings(userId, dto);
+  @Patch('me')
+  update(@CurrentUser() user: AuthUser, @Body() dto: UserPreferenceDto) {
+    return this.settingsService.updatePreferences(user.id, dto);
   }
 }
