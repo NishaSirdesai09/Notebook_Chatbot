@@ -39,7 +39,7 @@ export function CreateNotebookModal({
     }
     setLoading(true);
     try {
-      const nb = await api.notebooks.create({ ...form, userId: user?.id });
+      const nb = await api.notebooks.create({ ...form });
       toast.success("Notebook created", "You can now upload materials.");
       onCreated?.(nb);
       onClose();

@@ -1,44 +1,52 @@
 import { apiFetch, setAccessToken, clearAccessToken } from "@/lib/api/client";
+import { setRefreshToken, clearRefreshToken } from "@/lib/refresh-token";
 import type {
   ChatMessage,
   Document,
-  LlmCatalog,
   Notebook,
   Role,
   User,
-  UserSettings,
+  UserPreferences,
 } from "@/lib/types";
+
+type AuthResponse = { user: User; accessToken: string; refreshToken: string };
+
+function storeAuth(res: AuthResponse) {
+  setAccessToken(res.accessToken);
+  setRefreshToken(res.refreshToken);
+}
 
 export const api = {
   auth: {
     async signup(input: { name: string; email: string; password: string; role: Role }) {
-      const res = await apiFetch<{ user: User; accessToken: string }>("/auth/signup", {
-        method: "POST",
-        body: input,
-      });
-      setAccessToken(res.accessToken);
+      const res = await apiFetch<AuthResponse>("/auth/signup", { method: "POST", body: input });
+      storeAuth(res);
       return res.user;
     },
     async login(input: { email: string; password: string }) {
-      const res = await apiFetch<{ user: User; accessToken: string }>("/auth/login", {
-        method: "POST",
-        body: input,
-      });
-      setAccessToken(res.accessToken);
+      const res = await apiFetch<AuthResponse>("/auth/login", { method: "POST", body: input });
+      storeAuth(res);
       return res.user;
     },
+    async me() {
+      return apiFetch<User>("/auth/me");
+    },
     async logout() {
+      const { getRefreshToken } = await import("@/lib/refresh-token");
+      const refreshToken = getRefreshToken();
       clearAccessToken();
-      await apiFetch("/auth/logout", { method: "POST" });
+      clearRefreshToken();
+      if (refreshToken) {
+        await apiFetch("/auth/logout", { method: "POST", body: { refreshToken } }).catch(() => undefined);
+      }
     },
   },
 
   notebooks: {
-    list(userId?: string) {
-      const q = userId ? `?userId=${encodeURIComponent(userId)}` : "";
-      return apiFetch<Notebook[]>(`/notebooks${q}`);
+    list() {
+      return apiFetch<Notebook[]>("/notebooks");
     },
-    create(input: Partial<Notebook> & { userId?: string }) {
+    create(input: Partial<Notebook>) {
       return apiFetch<Notebook>("/notebooks", { method: "POST", body: input });
     },
     get(id: string) {
@@ -61,7 +69,16 @@ export const api = {
       return apiFetch<Document[]>(`/documents/notebook/${notebookId}`);
     },
     status(id: string) {
-      return apiFetch<{ id: string; status: string; errorMessage?: string }>(`/documents/${id}/status`);
+      return apiFetch<{
+        id: string;
+        status: string;
+        progress?: number;
+        stage?: string;
+        errorMessage?: string;
+      }>(`/documents/${id}/status`);
+    },
+    retry(id: string) {
+      return apiFetch(`/documents/${id}/retry`, { method: 'POST' });
     },
     remove(id: string) {
       return apiFetch(`/documents/${id}`, { method: "DELETE" });
@@ -69,13 +86,7 @@ export const api = {
   },
 
   chat: {
-    ask(input: {
-      notebookId: string;
-      message: string;
-      userId?: string;
-      llmProviderId?: string;
-      llmModelId?: string;
-    }) {
+    ask(input: { notebookId: string; message: string }) {
       return apiFetch<ChatMessage>("/chat", { method: "POST", body: input });
     },
     history(notebookId: string) {
@@ -83,15 +94,12 @@ export const api = {
     },
   },
 
-  settings: {
-    llmCatalog() {
-      return apiFetch<LlmCatalog[]>("/settings/llm/catalog");
+  preferences: {
+    get() {
+      return apiFetch<UserPreferences>("/preferences/me");
     },
-    get(userId: string) {
-      return apiFetch<UserSettings>(`/settings/${userId}`);
-    },
-    update(userId: string, input: Partial<UserSettings> & { llmApiKey?: string }) {
-      return apiFetch<UserSettings>(`/settings/${userId}`, { method: "PATCH", body: input });
+    update(input: Partial<UserPreferences>) {
+      return apiFetch<UserPreferences>("/preferences/me", { method: "PATCH", body: input });
     },
   },
 };

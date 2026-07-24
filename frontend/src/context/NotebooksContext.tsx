@@ -24,7 +24,7 @@ export function NotebooksProvider({ children }: { children: React.ReactNode }) {
   const refresh = React.useCallback(async () => {
     setReady(false);
     try {
-      const list = await api.notebooks.list(user?.id);
+      const list = await api.notebooks.list();
       setNotebooks(list);
     } finally {
       setReady(true);
