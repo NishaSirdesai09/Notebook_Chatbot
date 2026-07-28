@@ -1,10 +1,9 @@
 import { Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { QdrantClient } from '@qdrant/js-client-rest';
-import { randomUUID } from 'crypto';
 import { LlmConfigService } from '../llm/llm-config.service';
-
 export type ChunkPayload = {
+  userId?: string;
   notebookId: string;
   documentId: string;
   documentName: string;
@@ -72,14 +71,14 @@ export class QdrantService implements OnModuleInit {
   }
 
   async upsertChunks(
-    items: { vector: number[]; payload: ChunkPayload }[],
+    items: { pointId: string; vector: number[]; payload: ChunkPayload }[],
   ): Promise<void> {
     await this.requireReady();
     if (items.length === 0) return;
     await this.client.upsert(this.collection, {
       wait: true,
       points: items.map((item) => ({
-        id: randomUUID(),
+        id: item.pointId,
         vector: item.vector,
         payload: item.payload as Record<string, unknown>,
       })),
