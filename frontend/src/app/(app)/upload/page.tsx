@@ -21,6 +21,8 @@ type UploadFile = {
   icon: IconName;
   progress: number;
   stage: Stage;
+  stageLabel?: string;
+  errorMessage?: string;
   localKey: string;
 };
 
@@ -96,10 +98,18 @@ export default function UploadPage() {
       try {
         const status = await api.documents.status(docId);
         const stage = status.status as Stage;
+        const progress = status.progress ?? stageProgress[stage] ?? 0;
         setFiles((prev) =>
           prev.map((f) =>
             f.localKey === localKey
-              ? { ...f, id: docId, stage, progress: stageProgress[stage] ?? f.progress }
+              ? {
+                  ...f,
+                  id: docId,
+                  stage,
+                  progress,
+                  stageLabel: status.stage,
+                  errorMessage: status.errorMessage,
+                }
               : f,
           ),
         );
@@ -116,6 +126,23 @@ export default function UploadPage() {
         clearInterval(interval);
       }
     }, 1500);
+  }
+
+  async function retryUpload(docId: string, localKey: string) {
+    try {
+      await api.documents.retry(docId);
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.localKey === localKey
+            ? { ...f, stage: "extracting", progress: 15, errorMessage: undefined, stageLabel: "Retrying" }
+            : f,
+        ),
+      );
+      void pollStatus(docId, localKey);
+      toast.info("Retrying", "Document processing has been restarted.");
+    } catch {
+      toast.error("Retry failed", "Could not restart processing for this document.");
+    }
   }
 
   async function uploadOne(file: File) {
@@ -251,18 +278,24 @@ export default function UploadPage() {
               {files.map((f) => {
                 const IconCmp = Icon[f.icon];
                 const done = f.stage === "ready";
+                const failed = f.stage === "failed";
                 return (
                   <Card key={f.id} className="p-4">
                     <div className="flex items-center gap-3">
-                      <span className={cn("flex h-10 w-10 items-center justify-center rounded-lg", done ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-ink-500")}>
+                      <span className={cn("flex h-10 w-10 items-center justify-center rounded-lg", done ? "bg-emerald-50 text-emerald-600" : failed ? "bg-red-50 text-red-600" : "bg-slate-100 text-ink-500")}>
                         <IconCmp className="h-5 w-5" />
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-ink-900">{f.name}</p>
                         <p className="text-xs text-ink-400">{f.size}</p>
+                        {!done && f.stageLabel && (
+                          <p className={cn("mt-0.5 text-xs", failed ? "text-red-600" : "text-brand-600")}>{f.stageLabel}</p>
+                        )}
                       </div>
                       {done ? (
                         <Badge tone="green"><Icon.Check className="h-3.5 w-3.5" /> Ready</Badge>
+                      ) : failed ? (
+                        <Badge tone="red">Failed</Badge>
                       ) : (
                         <span className="text-xs font-medium text-brand-600">{Math.round(f.progress)}%</span>
                       )}
@@ -270,7 +303,7 @@ export default function UploadPage() {
                     <div className="mt-3">
                       <ProgressBar value={f.progress} tone={done ? "green" : "brand"} />
                     </div>
-                    {!done && (
+                    {!done && !failed && (
                       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
                         {pipeline.map((p) => {
                           const idx = pipeline.findIndex((x) => x.stage === p.stage);
@@ -288,6 +321,14 @@ export default function UploadPage() {
                     )}
                     {done && (
                       <p className="mt-2 text-xs text-emerald-600">Indexed and ready to chat.</p>
+                    )}
+                    {failed && (
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs text-red-600">{f.errorMessage ?? "Could not process this file."}</p>
+                        <Button variant="secondary" size="sm" onClick={() => void retryUpload(f.id, f.localKey)}>
+                          <Icon.Refresh className="h-3.5 w-3.5" /> Retry
+                        </Button>
+                      </div>
                     )}
                   </Card>
                 );

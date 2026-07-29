@@ -34,6 +34,8 @@ export type Document = {
   notebookId: string;
   status: "queued" | "extracting" | "chunking" | "embedding" | "indexing" | "ready" | "failed";
   pages?: number;
+  processingProgress?: number;
+  processingStage?: string;
   uploadedAt: string;
 };
 
@@ -101,23 +103,13 @@ export type CanvasCourse = {
   selected: boolean;
 };
 
-export type LlmCatalog = {
-  id: string;
-  name: string;
-  requiresApiKey?: boolean;
-  apiKeyHint?: string;
-  models: { id: string; name: string; default?: boolean }[];
-};
-
-export type UserSettings = {
-  llmProviderId: string;
-  llmModelId: string;
+export type UserPreferences = {
   studyMode: string;
   responseLength: string;
-  apiKeyStatus?: Record<string, boolean>;
-  activeProviderRequiresKey?: boolean;
-  embeddingProviderRequiresKey?: boolean;
 };
+
+/** @deprecated Use UserPreferences */
+export type UserSettings = UserPreferences;
 
 export type Activity = {
   id: string;

@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { IngestionModule } from '../ingestion/ingestion.module';
+import { StorageModule } from '../storage/storage.module';
 import { DocumentsController } from './documents.controller';
 import { DocumentsService } from './documents.service';
 
 @Module({
-  imports: [IngestionModule],
+  imports: [IngestionModule, AuthModule, StorageModule],
   controllers: [DocumentsController],
   providers: [DocumentsService],
   exports: [DocumentsService],
