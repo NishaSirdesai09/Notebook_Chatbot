@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ChatMessage, Citation } from '../../common/types';
+import { AuthorizationService } from '../auth/authorization.service';
 import { EmbeddingService } from '../embedding/embedding.service';
 import { LlmService } from '../llm/llm.service';
 import { QdrantService } from '../qdrant/qdrant.service';
@@ -23,13 +24,16 @@ export class ChatService {
     private readonly qdrant: QdrantService,
     private readonly llm: LlmService,
     private readonly settings: SettingsService,
+    private readonly authz: AuthorizationService,
     private readonly env: ConfigService,
   ) {
     this.topK = Number(this.env.get('RAG_TOP_K') ?? 8);
-    this.scoreThreshold = Number(this.env.get('RAG_SCORE_THRESHOLD') ?? 0.55);
+    this.scoreThreshold = Number(this.env.get('RAG_SCORE_THRESHOLD') ?? 0.35);
   }
 
-  async ask(dto: ChatDto): Promise<ChatMessage> {
+  async ask(dto: ChatDto, userId: string): Promise<ChatMessage> {
+    await this.authz.assertNotebookOwner(dto.notebookId, userId);
+
     const userMsg = await this.prisma.chatMessage.create({
       data: {
         role: 'user',
@@ -38,7 +42,7 @@ export class ChatService {
       },
     });
 
-    const embedKey = await this.settings.resolveEmbeddingApiKey(dto.userId);
+    const embedKey = this.settings.resolveEmbeddingApiKey();
     const queryVector = await this.embedding.embedOne(dto.message, embedKey);
     const chunks = await this.qdrant.search(dto.notebookId, queryVector, this.topK);
     const relevant = chunks.filter((c) => c.score >= this.scoreThreshold);
@@ -55,25 +59,36 @@ export class ChatService {
       return this.toChatMessage(assistantMsg, []);
     }
 
-    const { providerId, modelId } = await this.settings.resolveModel(dto.userId);
-    const overrideProvider = dto.llmProviderId ?? providerId;
-    const overrideModel = dto.llmModelId ?? modelId;
+    const { providerId, modelId } = this.settings.resolveModel();
+    const fallbacks = this.settings.resolveFallbackModels({ providerId, modelId }).map((fb) => ({
+      ...fb,
+      apiKey: this.settings.resolveApiKey(fb.providerId),
+    }));
 
-    const prefs = dto.userId ? await this.settings.getSettings(dto.userId) : null;
-    const systemPrompt = this.buildSystemPrompt(prefs?.studyMode, prefs?.responseLength);
+    const prefs = await this.settings.getStudyPreferences(userId);
+    const systemPrompt = this.buildSystemPrompt(prefs.studyMode, prefs.responseLength);
     const userPrompt = this.buildUserPrompt(dto.message, relevant);
 
-    const chatApiKey = dto.userId
-      ? await this.settings.resolveApiKey(dto.userId, overrideProvider)
-      : undefined;
+    const chatApiKey = this.settings.resolveApiKey(providerId);
 
-    const answer = await this.llm.complete({
-      providerId: overrideProvider,
-      modelId: overrideModel,
-      system: systemPrompt,
-      user: userPrompt,
-      apiKey: chatApiKey,
-    });
+    let answer: string;
+    try {
+      answer = await this.llm.completeWithFallback(
+        {
+          providerId,
+          modelId,
+          system: systemPrompt,
+          user: userPrompt,
+          apiKey: chatApiKey,
+        },
+        fallbacks,
+      );
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'LLM request failed';
+      throw new ServiceUnavailableException(
+        this.friendlyLlmError(detail),
+      );
+    }
 
     const citations: Citation[] = relevant.slice(0, 4).map((chunk, i) => ({
       id: `c_${randomUUID()}`,
@@ -109,13 +124,24 @@ export class ChatService {
     return this.toChatMessage(assistantMsg, assistantMsg.citations);
   }
 
-  async getHistory(notebookId: string): Promise<ChatMessage[]> {
+  async getHistory(notebookId: string, userId: string): Promise<ChatMessage[]> {
+    await this.authz.assertNotebookOwner(notebookId, userId);
     const rows = await this.prisma.chatMessage.findMany({
       where: { notebookId },
       include: { citations: true },
       orderBy: { createdAt: 'asc' },
     });
     return rows.map((row) => this.toChatMessage(row, row.citations));
+  }
+
+  private friendlyLlmError(detail: string): string {
+    if (/no_active_booking|GPU booking has expired/i.test(detail)) {
+      return 'The DashLab GPU booking has expired. Set LLM_PROVIDER=ollama in backend/.env and run: ollama pull llama3.2';
+    }
+    if (/ECONNREFUSED|fetch failed/i.test(detail)) {
+      return 'Could not reach the LLM server. Start Ollama locally or check your API key.';
+    }
+    return `Could not generate an answer: ${detail.slice(0, 200)}`;
   }
 
   private buildSystemPrompt(studyMode?: string, responseLength?: string) {
@@ -162,7 +188,7 @@ export class ChatService {
       role: string;
       content: string;
       explanation: string | null;
-      keyPoints: string | null;
+      keyPoints: unknown;
       practiceQuestion: string | null;
       notFound: boolean;
       citations?: { id: string; document: string; page: number; chapter: string; snippet: string }[];
@@ -174,7 +200,11 @@ export class ChatService {
       role: row.role as 'user' | 'assistant',
       content: row.content,
       explanation: row.explanation ?? undefined,
-      keyPoints: row.keyPoints ? (JSON.parse(row.keyPoints) as string[]) : undefined,
+      keyPoints: Array.isArray(row.keyPoints)
+        ? (row.keyPoints as string[])
+        : row.keyPoints
+          ? (JSON.parse(String(row.keyPoints)) as string[])
+          : undefined,
       practiceQuestion: row.practiceQuestion ?? undefined,
       notFound: row.notFound || undefined,
       citations: citations.map((c) => ({

@@ -9,6 +9,8 @@ import { Avatar, Badge } from "@/components/ui/primitives";
 import { LoadingState } from "@/components/ui/states";
 import { DocumentViewer } from "@/components/app/DocumentViewer";
 import { useToast } from "@/components/ui/Toast";
+import { ApiError } from "@/lib/api/client";
+import { api } from "@/lib/api/endpoints";
 import { api } from "@/lib/api/endpoints";
 import { SUGGESTED_PROMPTS } from "@/lib/constants";
 import { useAuth } from "@/context/AuthContext";
@@ -16,6 +18,18 @@ import { useDocuments } from "@/context/DocumentsContext";
 import { useNotebooks } from "@/context/NotebooksContext";
 import type { ChatMessage, Citation } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+function parseApiErrorMessage(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as { message?: string | string[] };
+    const msg = parsed.message;
+    if (Array.isArray(msg)) return msg.join(". ");
+    if (typeof msg === "string") return msg;
+  } catch {
+    // plain text response
+  }
+  return raw || "Request failed";
+}
 
 function ChatInner() {
   const params = useSearchParams();
@@ -69,11 +83,14 @@ function ChatInner() {
       const answer = await api.chat.ask({
         notebookId: activeNotebook,
         message: q,
-        userId: user?.id,
       });
       setMessages((m) => [...m, answer]);
-    } catch {
-      toast.error("Could not get an answer", "Check that your materials are indexed and the LLM is configured.");
+    } catch (err) {
+      const detail =
+        err instanceof ApiError
+          ? parseApiErrorMessage(err.message)
+          : "Check that your materials are indexed and the LLM is configured.";
+      toast.error("Could not get an answer", detail);
       setMessages((m) => m.filter((msg) => msg.id !== optimisticUser.id));
     } finally {
       setStreaming(false);

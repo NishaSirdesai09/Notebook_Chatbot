@@ -17,6 +17,40 @@ export class LlmService {
   constructor(private readonly config: LlmConfigService) {}
 
   async complete(input: ChatCompletionInput): Promise<string> {
+    return this.completeOnce(input);
+  }
+
+  async completeWithFallback(
+    input: ChatCompletionInput,
+    fallbacks: { providerId: string; modelId: string; apiKey?: string }[],
+  ): Promise<string> {
+    try {
+      return await this.completeOnce(input);
+    } catch (primaryErr) {
+      for (const fb of fallbacks) {
+        try {
+          this.logger.warn(
+            `Primary LLM (${input.providerId}/${input.modelId}) failed — trying ${fb.providerId}/${fb.modelId}`,
+          );
+          return await this.completeOnce({
+            ...input,
+            providerId: fb.providerId,
+            modelId: fb.modelId,
+            apiKey: fb.apiKey,
+          });
+        } catch (fallbackErr) {
+          this.logger.warn(
+            `Fallback LLM (${fb.providerId}/${fb.modelId}) failed: ${
+              fallbackErr instanceof Error ? fallbackErr.message : fallbackErr
+            }`,
+          );
+        }
+      }
+      throw primaryErr;
+    }
+  }
+
+  private async completeOnce(input: ChatCompletionInput): Promise<string> {
     const provider = this.config.getProvider(input.providerId);
     if (!provider) throw new Error(`Unknown LLM provider: ${input.providerId}`);
 

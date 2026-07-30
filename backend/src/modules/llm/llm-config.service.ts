@@ -42,11 +42,49 @@ export class LlmConfigService implements OnModuleInit {
   }
 
   resolveDefaultModel(): { providerId: string; modelId: string } {
+    const envProvider = this.env.get<string>('LLM_PROVIDER');
+    const envModel = this.env.get<string>('LLM_MODEL');
+    if (envProvider) {
+      const provider = this.getProvider(envProvider);
+      if (!provider) throw new Error(`Unknown LLM_PROVIDER: ${envProvider}`);
+      const model =
+        (envModel && this.getModel(envProvider, envModel)) ??
+        provider.models.find((m) => m.default) ??
+        provider.models[0];
+      if (!model) throw new Error(`No models configured for provider ${envProvider}`);
+      return { providerId: envProvider, modelId: model.id };
+    }
+
     for (const provider of this.config.providers) {
       const model = provider.models.find((m) => m.default) ?? provider.models[0];
       if (model) return { providerId: provider.id, modelId: model.id };
     }
     throw new Error('No LLM models configured in llm.providers.json');
+  }
+
+  /** Ordered providers to try when the primary chat model fails (e.g. expired GPU booking). */
+  resolveFallbackModels(primary: { providerId: string; modelId: string }) {
+    const preferredOrder = ['ollama', 'openai', 'dashlab'];
+    const fallbacks: { providerId: string; modelId: string }[] = [];
+
+    for (const id of preferredOrder) {
+      const provider = this.getProvider(id);
+      if (!provider) continue;
+      const model = provider.models.find((m) => m.default) ?? provider.models[0];
+      if (!model) continue;
+      if (provider.id === primary.providerId && model.id === primary.modelId) continue;
+      fallbacks.push({ providerId: provider.id, modelId: model.id });
+    }
+
+    for (const provider of this.config.providers) {
+      const model = provider.models.find((m) => m.default) ?? provider.models[0];
+      if (!model) continue;
+      if (provider.id === primary.providerId && model.id === primary.modelId) continue;
+      if (fallbacks.some((f) => f.providerId === provider.id && f.modelId === model.id)) continue;
+      fallbacks.push({ providerId: provider.id, modelId: model.id });
+    }
+
+    return fallbacks;
   }
 
   resolveApiKey(provider: LlmProviderConfig): string | undefined {
