@@ -1,46 +1,74 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { PrismaService } from '../../prisma/prisma.service';
 import { Notebook } from '../../common/types';
-import { seedNotebooks } from '../../common/seed';
 import { CreateNotebookDto } from './dto/notebook.dto';
 
 @Injectable()
 export class NotebooksService {
-  // In-memory store — replace with a PostgreSQL repository.
-  private notebooks: Notebook[] = [...seedNotebooks];
+  constructor(private readonly prisma: PrismaService) {}
 
-  findAll(): Notebook[] {
-    return this.notebooks;
+  async findAll(userId?: string): Promise<Notebook[]> {
+    const rows = await this.prisma.notebook.findMany({
+      where: userId ? { ownerId: userId } : undefined,
+      orderBy: { updatedAt: 'desc' },
+    });
+    return rows.map((n) => this.toNotebook(n));
   }
 
-  findOne(id: string): Notebook {
-    const notebook = this.notebooks.find((n) => n.id === id);
+  async findOne(id: string): Promise<Notebook> {
+    const notebook = await this.prisma.notebook.findUnique({ where: { id } });
     if (!notebook) throw new NotFoundException(`Notebook ${id} not found`);
-    return notebook;
+    return this.toNotebook(notebook);
   }
 
-  create(dto: CreateNotebookDto): Notebook {
-    const notebook: Notebook = {
-      id: `nb_${randomUUID()}`,
-      title: dto.title,
-      course: dto.course ?? '',
-      description: dto.description ?? '',
-      subject: dto.subject ?? 'General',
-      visibility: dto.visibility ?? 'Private',
-      files: 0,
-      status: 'Processing',
-      updatedAt: new Date().toISOString(),
-      color: 'from-brand-500 to-accent-purple',
-      questionsAsked: 0,
-    };
-    this.notebooks = [notebook, ...this.notebooks];
-    return notebook;
+  async create(dto: CreateNotebookDto, userId?: string): Promise<Notebook> {
+    const notebook = await this.prisma.notebook.create({
+      data: {
+        title: dto.title,
+        course: dto.course ?? '',
+        description: dto.description ?? '',
+        subject: dto.subject ?? 'General',
+        visibility: dto.visibility ?? 'Private',
+        ownerId: userId,
+        status: 'Processing',
+        color: 'from-brand-500 to-accent-purple',
+      },
+    });
+    return this.toNotebook(notebook);
   }
 
-  remove(id: string): { success: boolean } {
-    const exists = this.notebooks.some((n) => n.id === id);
+  async remove(id: string): Promise<{ success: boolean }> {
+    const exists = await this.prisma.notebook.findUnique({ where: { id } });
     if (!exists) throw new NotFoundException(`Notebook ${id} not found`);
-    this.notebooks = this.notebooks.filter((n) => n.id !== id);
+    await this.prisma.notebook.delete({ where: { id } });
     return { success: true };
+  }
+
+  private toNotebook(n: {
+    id: string;
+    title: string;
+    course: string;
+    description: string;
+    subject: string;
+    visibility: string;
+    files: number;
+    status: string;
+    updatedAt: Date;
+    color: string;
+    questionsAsked: number;
+  }): Notebook {
+    return {
+      id: n.id,
+      title: n.title,
+      course: n.course,
+      description: n.description,
+      subject: n.subject,
+      visibility: n.visibility as Notebook['visibility'],
+      files: n.files,
+      status: n.status as Notebook['status'],
+      updatedAt: n.updatedAt.toISOString(),
+      color: n.color,
+      questionsAsked: n.questionsAsked,
+    };
   }
 }

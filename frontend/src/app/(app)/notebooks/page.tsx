@@ -11,8 +11,8 @@ import { Input } from "@/components/ui/primitives";
 import { EmptyState, LoadingState } from "@/components/ui/states";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/ui/Toast";
-import { notebooks as seed } from "@/lib/mock-data";
-import type { Notebook, NotebookStatus } from "@/lib/types";
+import { useNotebooks } from "@/context/NotebooksContext";
+import type { NotebookStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const filters: ("All" | NotebookStatus)[] = ["All", "Ready", "Processing", "Failed"];
@@ -20,22 +20,16 @@ const filters: ("All" | NotebookStatus)[] = ["All", "Ready", "Processing", "Fail
 function NotebooksInner() {
   const params = useSearchParams();
   const toast = useToast();
-  const [list, setList] = React.useState<Notebook[]>(seed);
-  const [loading, setLoading] = React.useState(true);
+  const { notebooks, removeNotebook, addNotebook, ready } = useNotebooks();
   const [query, setQuery] = React.useState("");
   const [filter, setFilter] = React.useState<(typeof filters)[number]>("All");
   const [openCreate, setOpenCreate] = React.useState(false);
 
   React.useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(t);
-  }, []);
-
-  React.useEffect(() => {
     if (params.get("create") === "1") setOpenCreate(true);
   }, [params]);
 
-  const filtered = list.filter((n) => {
+  const filtered = notebooks.filter((n) => {
     const matchesQuery =
       n.title.toLowerCase().includes(query.toLowerCase()) ||
       n.course.toLowerCase().includes(query.toLowerCase());
@@ -44,18 +38,18 @@ function NotebooksInner() {
   });
 
   function handleDelete(id: string) {
-    setList((l) => l.filter((n) => n.id !== id));
+    removeNotebook(id);
     toast.success("Notebook deleted");
   }
 
   return (
     <PageContainer>
       <PageHeader
-        title="My Notebooks"
-        description="Your study spaces — one per course or subject."
+        title="Notebooks"
+        description="One study space per course. Upload materials, then chat with citations."
         actions={
           <Button onClick={() => setOpenCreate(true)}>
-            <Icon.Plus className="h-4 w-4" /> Create New Notebook
+            <Icon.Plus className="h-4 w-4" /> New notebook
           </Button>
         }
       />
@@ -87,8 +81,8 @@ function NotebooksInner() {
       </div>
 
       <div className="mt-6">
-        {loading ? (
-          <LoadingState label="Loading your notebooks…" />
+        {!ready ? (
+          <LoadingState label="Loading notebooks…" />
         ) : filtered.length === 0 ? (
           <EmptyState
             icon="Notebook"
@@ -96,7 +90,7 @@ function NotebooksInner() {
             description="Create your first notebook to start uploading materials and chatting with them."
             action={
               <Button onClick={() => setOpenCreate(true)}>
-                <Icon.Plus className="h-4 w-4" /> Create Notebook
+                <Icon.Plus className="h-4 w-4" /> Create notebook
               </Button>
             }
           />
@@ -112,7 +106,7 @@ function NotebooksInner() {
       <CreateNotebookModal
         open={openCreate}
         onClose={() => setOpenCreate(false)}
-        onCreated={(n) => setList((l) => [n, ...l])}
+        onCreated={(n) => addNotebook(n)}
       />
     </PageContainer>
   );

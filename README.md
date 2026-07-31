@@ -15,30 +15,95 @@ Chatbot-Book/
 
 ## Quick Start
 
-Run the two apps in separate terminals.
+You need **4 things** running (each in its own terminal unless noted):
 
-**Backend** (API on http://localhost:4000):
+| # | Service | Port | Purpose |
+|---|---------|------|---------|
+| 1 | **Qdrant** (Docker) | 6333 | Vector search over uploaded PDFs |
+| 2 | **Ollama** | 11434 | Free local embeddings (no OpenAI key) |
+| 3 | **Backend** (NestJS) | 4000 | API, auth, RAG pipeline |
+| 4 | **Frontend** (Next.js) | 3000 | Web UI |
+
+Open **http://localhost:3000** in your browser (not a file path).
+
+### One-time setup
+
+```bash
+# 1. Install dependencies (from repo root)
+cd backend && npm install
+cd ../frontend && npm install
+
+# 2. Environment files
+cp backend/.env.example backend/.env          # add DASHLAB_API_KEY from dashlab.studio → Keys tab
+cp frontend/.env.example frontend/.env.local
+
+# 3. Database (SQLite — auto-created on first migrate)
+cd backend
+npx prisma migrate dev
+
+# 4. Ollama (free local embeddings — one-time model download)
+# Install from https://ollama.com then:
+ollama pull nomic-embed-text
+# Ollama runs in the background after install (tray icon on Windows)
+```
+
+### Every time you run the project
+
+**Terminal 1 — Qdrant** (requires Docker Desktop running):
+
+```bash
+docker run -p 6333:6333 qdrant/qdrant
+```
+
+**Terminal 2 — Backend**:
 
 ```bash
 cd backend
-npm install
 npm run start:dev
+# → http://localhost:4000/health should return {"status":"ok"}
 ```
 
-**Frontend** (app on http://localhost:3000):
+**Terminal 3 — Frontend**:
 
 ```bash
 cd frontend
-npm install
 npm run dev
+# → http://localhost:3000
 ```
 
-By default the frontend runs on mock data. To call the live backend, create
-`frontend/.env.local` with:
+### API keys (`backend/.env`)
 
+| Variable | Required? | Used for |
+|----------|-----------|----------|
+| `DASHLAB_API_KEY` | Yes (for chat) | GLM / Gemma answers via dashlab.studio |
+| `OPENAI_API_KEY` | No | Only if you switch embeddings back to OpenAI |
+| `DATABASE_URL` | Auto | SQLite file at `backend/prisma/dev.db` |
+| `JWT_SECRET` | Yes | Auth tokens |
+
+You can also save your DashLab key in the app: **Sign in → Settings → AI Preferences**.
+
+### Troubleshooting
+
+- **Unstyled HTML / ChunkLoadError**: delete `frontend/.next`, restart frontend, hard-refresh (`Ctrl+Shift+R`).
+- **Port already in use**: stop old Node processes on 3000 or 4000, then restart.
+- **Qdrant warning in backend logs**: start Docker Desktop, then run the Qdrant docker command above.
+- **Upload/index fails**: ensure Ollama is running and `nomic-embed-text` is pulled.
+
+See [`backend/RAG.md`](backend/RAG.md) for the full RAG pipeline details.
+
+---
+
+## Legacy quick start (minimal — chat only, no upload search)
+
+```bash
+cd backend && npm install && npm run start:dev
+cd frontend && npm install && npm run dev
 ```
-NEXT_PUBLIC_API_URL=http://localhost:4000
-```
+
+Or from the repo root: `npm run install:all` then `npm run dev`.
+
+By default the frontend calls the backend at `http://localhost:4000`. Copy
+`frontend/.env.example` to `frontend/.env.local` if you need a different API URL.
 
 ## What's Inside
 

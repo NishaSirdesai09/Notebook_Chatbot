@@ -27,6 +27,18 @@ model User {
   createdAt DateTime @default(now())
 
   notebooks Notebook[]
+  settings  UserSettings?
+}
+
+model UserSettings {
+  id              String  @id @default(uuid())
+  userId          String  @unique
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  llmProviderId   String?
+  llmModelId      String?
+  providerApiKeys String? // JSON map: { "openai": "sk-...", "custom": "..." }
+  studyMode       String  @default("balanced")
+  responseLength  String  @default("balanced")
 }
 
 model Notebook {
@@ -52,13 +64,15 @@ model Notebook {
 }
 
 model Document {
-  id         String   @id @default(uuid())
-  name       String
-  type       String // pdf | docx | ppt | txt | image | link | youtube | canvas
-  size       String   @default("—")
-  status     String   @default("queued") // queued | extracting | chunking | embedding | indexing | ready | failed
-  pages      Int?
-  uploadedAt DateTime @default(now())
+  id           String   @id @default(uuid())
+  name         String
+  type         String // pdf | docx | ppt | txt | image | link | youtube | canvas | reference
+  size         String   @default("—")
+  status       String   @default("queued") // queued | extracting | chunking | embedding | indexing | ready | failed
+  pages        Int?
+  storagePath  String?
+  errorMessage String?
+  uploadedAt   DateTime @default(now())
 
   notebookId String
   notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)

@@ -18,30 +18,30 @@ const studyActivity = [
 ];
 
 const topTopics = [
-  { topic: "SN1 / SN2 Mechanisms", count: 48 },
-  { topic: "Graph Traversal", count: 39 },
-  { topic: "Eigenvalues", count: 27 },
-  { topic: "Fiscal Policy", count: 21 },
-  { topic: "Spectroscopy", count: 18 },
+  { topic: "Porter's Five Forces", count: 48 },
+  { topic: "NPV vs IRR", count: 39 },
+  { topic: "Market Segmentation", count: 27 },
+  { topic: "WACC & Cost of Capital", count: 21 },
+  { topic: "Case Analysis Framework", count: 18 },
 ];
 
 const weakConcepts = [
-  { topic: "Stereochemistry", score: 38 },
-  { topic: "Dynamic Programming", score: 45 },
-  { topic: "Diagonalization", score: 41 },
+  { topic: "Capital Budgeting", score: 38 },
+  { topic: "Competitive Strategy", score: 45 },
+  { topic: "Financial Statement Analysis", score: 41 },
 ];
 
 const quizPerf = [
-  { quiz: "Nucleophilic Substitution", score: 90 },
-  { quiz: "Graph Algorithms", score: 80 },
-  { quiz: "Linear Maps", score: 65 },
-  { quiz: "Macro Models", score: 72 },
+  { quiz: "Strategic Management Midterm", score: 90 },
+  { quiz: "Corporate Finance — NPV", score: 80 },
+  { quiz: "Marketing 4Ps", score: 65 },
+  { quiz: "Accounting Ratios", score: 72 },
 ];
 
 const profFAQ = [
-  { q: "What's the difference between SN1 and SN2?", count: 64 },
-  { q: "How do I derive the rate law?", count: 41 },
-  { q: "When is a reaction first-order?", count: 33 },
+  { q: "How do I apply Porter's Five Forces?", count: 64 },
+  { q: "When do NPV and IRR conflict?", count: 41 },
+  { q: "How should I structure a case write-up?", count: 33 },
 ];
 
 function BarChart() {

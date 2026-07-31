@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/Button";
 import { Card, Select, ProgressBar, Badge, Input } from "@/components/ui/primitives";
 import { Icon, type IconName } from "@/components/icons";
 import { useToast } from "@/components/ui/Toast";
-import { notebooks } from "@/lib/mock-data";
+import { api } from "@/lib/api/endpoints";
+import { useDocuments } from "@/context/DocumentsContext";
+import { useNotebooks } from "@/context/NotebooksContext";
+import type { DocType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Stage = "uploading" | "extracting" | "chunking" | "embedding" | "indexing" | "ready" | "failed";
@@ -18,14 +21,15 @@ type UploadFile = {
   icon: IconName;
   progress: number;
   stage: Stage;
+  localKey: string;
 };
 
 const accepted = [
-  { ext: "PDF", icon: "FilePdf" as IconName },
+  { ext: "Professor refs", icon: "User" as IconName },
+  { ext: "Case PDFs", icon: "FilePdf" as IconName },
   { ext: "DOCX", icon: "Doc" as IconName },
   { ext: "PPT", icon: "Doc" as IconName },
   { ext: "TXT", icon: "File" as IconName },
-  { ext: "Images", icon: "Image" as IconName },
 ];
 
 const pipeline: { stage: Stage; label: string }[] = [
@@ -46,65 +50,111 @@ function iconForName(name: string): IconName {
   return "File";
 }
 
+function docTypeForName(name: string): DocType {
+  const n = name.toLowerCase();
+  if (/prof[_\s]|professor|reference|hbr_|syllabus/.test(n)) return "reference";
+  if (n.endsWith(".pdf")) return "pdf";
+  if (n.endsWith(".doc") || n.endsWith(".docx")) return "docx";
+  if (n.endsWith(".ppt") || n.endsWith(".pptx")) return "ppt";
+  if (n.endsWith(".txt")) return "txt";
+  if (/\.(png|jpe?g|gif|webp)$/.test(n)) return "image";
+  if (n.includes("youtube")) return "youtube";
+  if (n.startsWith("http")) return "link";
+  return "txt";
+}
+
 export default function UploadPage() {
   const toast = useToast();
-  const [notebook, setNotebook] = React.useState(notebooks[0].id);
+  const { refresh: refreshDocs } = useDocuments();
+  const { notebooks, ready } = useNotebooks();
+  const [notebook, setNotebook] = React.useState("");
   const [dragging, setDragging] = React.useState(false);
   const [files, setFiles] = React.useState<UploadFile[]>([]);
   const [linkUrl, setLinkUrl] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  const validExt = /\.(pdf|docx?|pptx?|txt|png|jpe?g|gif|webp)$/i;
+  React.useEffect(() => {
+    if (ready && notebooks.length > 0 && !notebook) {
+      setNotebook(notebooks[0].id);
+    }
+  }, [ready, notebooks, notebook]);
 
-  function addFiles(fileList: FileList | File[]) {
-    const arr = Array.from(fileList);
-    const valid: UploadFile[] = [];
-    arr.forEach((f) => {
-      if (!validExt.test(f.name)) {
-        toast.error("Unsupported file", `${f.name} is not a supported format.`);
-        return;
+  const validExt = /\.(pdf|txt)$/i;
+
+  const stageProgress: Record<Stage, number> = {
+    uploading: 15,
+    extracting: 35,
+    chunking: 55,
+    embedding: 75,
+    indexing: 90,
+    ready: 100,
+    failed: 100,
+  };
+
+  async function pollStatus(docId: string, localKey: string) {
+    const interval = setInterval(async () => {
+      try {
+        const status = await api.documents.status(docId);
+        const stage = status.status as Stage;
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.localKey === localKey
+              ? { ...f, id: docId, stage, progress: stageProgress[stage] ?? f.progress }
+              : f,
+          ),
+        );
+        if (stage === "ready") {
+          clearInterval(interval);
+          await refreshDocs(notebook);
+          toast.success("Ready to chat", "Your document has been indexed.");
+        }
+        if (stage === "failed") {
+          clearInterval(interval);
+          toast.error("Indexing failed", status.errorMessage ?? "Could not process this file.");
+        }
+      } catch {
+        clearInterval(interval);
       }
-      valid.push({
-        id: `${f.name}-${Date.now()}-${Math.random()}`,
-        name: f.name,
-        size: `${(f.size / 1024 / 1024).toFixed(1)} MB`,
-        icon: iconForName(f.name),
-        progress: 0,
-        stage: "uploading",
-      });
-    });
-    if (valid.length) {
-      setFiles((prev) => [...valid, ...prev]);
-      valid.forEach((v) => simulate(v.id));
+    }, 1500);
+  }
+
+  async function uploadOne(file: File) {
+    if (!notebook) {
+      toast.error("Select a notebook first");
+      return;
+    }
+    const localKey = `${file.name}-${Date.now()}`;
+    const entry: UploadFile = {
+      id: localKey,
+      localKey,
+      name: file.name,
+      size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
+      icon: iconForName(file.name),
+      progress: 5,
+      stage: "uploading",
+    };
+    setFiles((prev) => [entry, ...prev]);
+
+    try {
+      const doc = await api.documents.upload(file, notebook, docTypeForName(file.name));
+      setFiles((prev) =>
+        prev.map((f) => (f.localKey === localKey ? { ...f, id: doc.id, stage: "extracting", progress: 20 } : f)),
+      );
+      void pollStatus(doc.id, localKey);
+    } catch {
+      toast.error("Upload failed", `Could not upload ${file.name}.`);
+      setFiles((prev) => prev.filter((f) => f.localKey !== localKey));
     }
   }
 
-  function simulate(id: string) {
-    const stages: Stage[] = ["uploading", "extracting", "chunking", "embedding", "indexing", "ready"];
-    let step = 0;
-    const tick = () => {
-      setFiles((prev) =>
-        prev.map((f) => {
-          if (f.id !== id) return f;
-          const nextProgress = Math.min(100, f.progress + 8 + Math.random() * 10);
-          let stage = f.stage;
-          step = Math.floor((nextProgress / 100) * (stages.length - 1));
-          stage = stages[step];
-          if (nextProgress >= 100) stage = "ready";
-          return { ...f, progress: nextProgress, stage };
-        })
-      );
-    };
-    const interval = setInterval(() => {
-      tick();
-      setFiles((prev) => {
-        const f = prev.find((x) => x.id === id);
-        if (f && f.progress >= 100) {
-          clearInterval(interval);
-        }
-        return prev;
-      });
-    }, 450);
+  function addFiles(fileList: FileList | File[]) {
+    Array.from(fileList).forEach((f) => {
+      if (!validExt.test(f.name)) {
+        toast.error("Unsupported file", `${f.name} — use PDF or TXT for now.`);
+        return;
+      }
+      void uploadOne(f);
+    });
   }
 
   function onDrop(e: React.DragEvent) {
@@ -113,30 +163,15 @@ export default function UploadPage() {
     if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
   }
 
-  function addLink(kind: "link" | "youtube") {
-    if (!linkUrl.trim()) {
-      toast.error("Enter a URL first");
-      return;
-    }
-    const nf: UploadFile = {
-      id: `link-${Date.now()}`,
-      name: linkUrl,
-      size: "—",
-      icon: kind === "youtube" ? "Video" : "Link",
-      progress: 0,
-      stage: "uploading",
-    };
-    setFiles((prev) => [nf, ...prev]);
-    simulate(nf.id);
-    setLinkUrl("");
-    toast.success("Link added", "We're indexing it now.");
+  function addLink(_kind: "link" | "youtube") {
+    toast.error("Links not supported yet", "Upload a PDF or TXT file for now.");
   }
 
   return (
     <PageContainer>
       <PageHeader
         title="Upload Material"
-        description="Add textbooks, PDFs, slides, notes, images, and links to your notebook."
+        description="Add case studies, lecture slides, professor reference PDFs, and syllabus readings. The AI answers from these materials only."
       />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
@@ -152,10 +187,19 @@ export default function UploadPage() {
                 <p className="text-xs text-ink-400">Choose where these materials should live.</p>
               </div>
             </div>
-            <Select className="sm:w-56" value={notebook} onChange={(e) => setNotebook(e.target.value)}>
-              {notebooks.map((n) => (
-                <option key={n.id} value={n.id}>{n.title}</option>
-              ))}
+            <Select
+              className="sm:w-56"
+              value={notebook}
+              onChange={(e) => setNotebook(e.target.value)}
+              disabled={!ready || notebooks.length === 0}
+            >
+              {notebooks.length === 0 ? (
+                <option value="">No notebooks — create one first</option>
+              ) : (
+                notebooks.map((n) => (
+                  <option key={n.id} value={n.id}>{n.title}</option>
+                ))
+              )}
             </Select>
           </Card>
 
@@ -254,6 +298,23 @@ export default function UploadPage() {
 
         {/* Links sidebar */}
         <div className="space-y-4">
+          <Card className="border-violet-100 bg-violet-50/40 p-5">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+              <Icon.User className="h-4 w-4 text-violet-600" /> Professor reference PDF
+            </h3>
+            <p className="mt-1 text-xs text-ink-500">
+              Upload curated readings your professor shared — frameworks, syllabus refs, and HBR articles. These are prioritized in chat answers.
+            </p>
+            <Button
+              variant="secondary"
+              fullWidth
+              className="mt-3"
+              onClick={() => inputRef.current?.click()}
+            >
+              <Icon.Upload className="h-4 w-4" /> Upload professor PDF
+            </Button>
+          </Card>
+
           <Card className="p-5">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-ink-900">
               <Icon.Link className="h-4 w-4 text-brand-600" /> Add a reference link

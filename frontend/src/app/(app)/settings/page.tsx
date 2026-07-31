@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/Button";
 import { Card, Input, Select, Toggle, Avatar, Badge } from "@/components/ui/primitives";
 import { Icon, type IconName } from "@/components/icons";
 import { useToast } from "@/components/ui/Toast";
-import { currentUser } from "@/lib/mock-data";
+import { api } from "@/lib/api/endpoints";
+import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 
 const tabs: { id: string; label: string; icon: IconName }[] = [
@@ -26,11 +27,65 @@ const studyModes: { id: string; label: string; desc: string; icon: IconName }[] 
 
 export default function SettingsPage() {
   const toast = useToast();
+  const { user } = useAuth();
   const [tab, setTab] = React.useState("profile");
-  const [studyMode, setStudyMode] = React.useState("beginner");
-  const [responseLength, setResponseLength] = React.useState("Balanced");
+  const [studyMode, setStudyMode] = React.useState("balanced");
+  const [responseLength, setResponseLength] = React.useState("balanced");
+  const [llmProviderId, setLlmProviderId] = React.useState("");
+  const [llmModelId, setLlmModelId] = React.useState("");
+  const [llmApiKey, setLlmApiKey] = React.useState("");
+  const [apiKeyStatus, setApiKeyStatus] = React.useState<Record<string, boolean>>({});
+  const [catalog, setCatalog] = React.useState<
+    { id: string; name: string; requiresApiKey?: boolean; apiKeyHint?: string; models: { id: string; name: string }[] }[]
+  >([]);
+  const [saving, setSaving] = React.useState(false);
   const [notif, setNotif] = React.useState({ email: true, processing: true, quiz: true, weekly: false, product: false });
-  const [profile, setProfile] = React.useState({ name: currentUser.name, email: currentUser.email, role: currentUser.role });
+  const [profile, setProfile] = React.useState({
+    name: user?.name ?? "",
+    email: user?.email ?? "",
+    role: user?.role ?? "Student",
+  });
+
+  React.useEffect(() => {
+    if (user) setProfile({ name: user.name, email: user.email, role: user.role });
+  }, [user]);
+
+  React.useEffect(() => {
+    if (!user) return;
+    Promise.all([api.settings.llmCatalog(), api.settings.get(user.id)]).then(([cat, prefs]) => {
+      setCatalog(cat);
+      setLlmProviderId(prefs.llmProviderId);
+      setLlmModelId(prefs.llmModelId);
+      setStudyMode(prefs.studyMode);
+      setResponseLength(prefs.responseLength);
+      setApiKeyStatus(prefs.apiKeyStatus ?? {});
+      setLlmApiKey("");
+    });
+  }, [user]);
+
+  const activeProvider = catalog.find((p) => p.id === llmProviderId);
+  const hasSavedKey = apiKeyStatus[llmProviderId] === true;
+
+  async function saveAiPreferences() {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const updated = await api.settings.update(user.id, {
+        llmProviderId,
+        llmModelId,
+        studyMode,
+        responseLength: responseLength.toLowerCase(),
+        ...(llmApiKey.trim() ? { llmApiKey: llmApiKey.trim() } : {}),
+      });
+      setApiKeyStatus(updated.apiKeyStatus ?? {});
+      setLlmApiKey("");
+      toast.success("AI preferences saved");
+    } catch {
+      toast.error("Could not save preferences");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <PageContainer>
@@ -169,15 +224,94 @@ export default function SettingsPage() {
           {tab === "ai" && (
             <>
               <Card className="p-6">
+                <h2 className="text-base font-semibold text-ink-900">Language model</h2>
+                <p className="text-sm text-ink-500">
+                  Choose which LLM powers your chat answers. Add providers in{" "}
+                  <code className="text-xs">backend/config/llm.providers.json</code>.
+                </p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="label">Provider</label>
+                    <Select
+                      value={llmProviderId}
+                      onChange={(e) => {
+                        const providerId = e.target.value;
+                        setLlmProviderId(providerId);
+                        const provider = catalog.find((p) => p.id === providerId);
+                        setLlmModelId(provider?.models[0]?.id ?? "");
+                      }}
+                    >
+                      {catalog.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="label">Model</label>
+                    <Select value={llmModelId} onChange={(e) => setLlmModelId(e.target.value)}>
+                      {(activeProvider?.models ?? []).map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+              </Card>
+
+              {activeProvider?.requiresApiKey && (
+                <Card className="p-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-base font-semibold text-ink-900">API key</h2>
+                    {hasSavedKey && (
+                      <Badge tone="green">
+                        <Icon.Check className="h-3.5 w-3.5" /> Key saved
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm text-ink-500">
+                    Your key is stored for your account only and is never shown again after saving.
+                    {activeProvider.apiKeyHint && (
+                      <> Expected format: {activeProvider.apiKeyHint}.</>
+                    )}
+                  </p>
+                  <div className="mt-4">
+                    <label className="label">
+                      {activeProvider.name} API key
+                    </label>
+                    <Input
+                      type="password"
+                      autoComplete="off"
+                      placeholder={hasSavedKey ? "••••••••••••••••  (leave blank to keep current)" : "Paste your API key"}
+                      value={llmApiKey}
+                      onChange={(e) => setLlmApiKey(e.target.value)}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-ink-400">
+                    {activeProvider.id === "dashlab" ? (
+                      <>
+                        Used for chat with your booked GLM / Gemma models on DashLab.
+                        Document search uses free local Ollama embeddings — run{" "}
+                        <code className="text-[11px]">ollama pull nomic-embed-text</code> on your machine.
+                      </>
+                    ) : (
+                      <>
+                        Used for chat with {activeProvider.name}. Document search uses Ollama locally
+                        (<code className="text-[11px]">nomic-embed-text</code>) — no OpenAI key needed.
+                      </>
+                    )}
+                  </p>
+                </Card>
+              )}
+
+              <Card className="p-6">
                 <h2 className="text-base font-semibold text-ink-900">AI response preference</h2>
                 <p className="text-sm text-ink-500">Control how detailed the AI&apos;s answers are.</p>
                 <div className="mt-4 flex gap-2">
-                  {["Concise", "Balanced", "Detailed"].map((r) => (
+                  {["concise", "balanced", "detailed"].map((r) => (
                     <button
                       key={r}
                       onClick={() => setResponseLength(r)}
                       className={cn(
-                        "flex-1 rounded-xl border py-2.5 text-sm font-medium transition",
+                        "flex-1 rounded-xl border py-2.5 text-sm font-medium capitalize transition",
                         responseLength === r ? "border-brand-300 bg-brand-50 text-brand-700" : "border-slate-200 text-ink-600 hover:bg-slate-50"
                       )}
                     >
@@ -215,7 +349,7 @@ export default function SettingsPage() {
                   })}
                 </div>
                 <div className="mt-5 flex justify-end">
-                  <Button onClick={() => toast.success("AI preferences saved")}>Save preferences</Button>
+                  <Button onClick={saveAiPreferences} loading={saving}>Save preferences</Button>
                 </div>
               </Card>
             </>

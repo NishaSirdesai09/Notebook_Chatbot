@@ -1,7 +1,7 @@
 export type Role = 'Student' | 'Professor' | 'Admin';
 export type NotebookStatus = 'Processing' | 'Ready' | 'Failed';
 export type Visibility = 'Private' | 'Shared with class';
-export type DocType = 'pdf' | 'docx' | 'ppt' | 'txt' | 'image' | 'link' | 'youtube' | 'canvas';
+export type DocType = 'pdf' | 'docx' | 'ppt' | 'txt' | 'image' | 'link' | 'youtube' | 'canvas' | 'reference';
 export type DocStatus =
   | 'queued'
   | 'extracting'

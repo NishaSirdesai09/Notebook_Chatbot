@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { NotebooksService } from './notebooks.service';
 import { CreateNotebookDto } from './dto/notebook.dto';
 
@@ -7,13 +7,13 @@ export class NotebooksController {
   constructor(private readonly notebooksService: NotebooksService) {}
 
   @Get()
-  findAll() {
-    return this.notebooksService.findAll();
+  findAll(@Query('userId') userId?: string) {
+    return this.notebooksService.findAll(userId);
   }
 
   @Post()
-  create(@Body() dto: CreateNotebookDto) {
-    return this.notebooksService.create(dto);
+  create(@Body() dto: CreateNotebookDto & { userId?: string }) {
+    return this.notebooksService.create(dto, dto.userId);
   }
 
   @Get(':id')

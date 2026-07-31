@@ -9,7 +9,8 @@ import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/api/endpoints";
 import type { Notebook } from "@/lib/types";
 
-const subjects = ["Chemistry", "Computer Science", "Mathematics", "Biology", "Economics", "History", "Physics", "Other"];
+import { BUSINESS_SUBJECTS } from "@/lib/constants";
+import { useAuth } from "@/context/AuthContext";
 
 export function CreateNotebookModal({
   open,
@@ -21,12 +22,13 @@ export function CreateNotebookModal({
   onCreated?: (n: Notebook) => void;
 }) {
   const toast = useToast();
+  const { user } = useAuth();
   const [loading, setLoading] = React.useState(false);
   const [form, setForm] = React.useState({
     title: "",
     course: "",
     description: "",
-    subject: "Chemistry",
+    subject: "Finance",
     visibility: "Private" as "Private" | "Shared with class",
   });
 
@@ -37,11 +39,11 @@ export function CreateNotebookModal({
     }
     setLoading(true);
     try {
-      const nb = await api.notebooks.create(form);
+      const nb = await api.notebooks.create({ ...form, userId: user?.id });
       toast.success("Notebook created", "You can now upload materials.");
       onCreated?.(nb);
       onClose();
-      setForm({ title: "", course: "", description: "", subject: "Chemistry", visibility: "Private" });
+      setForm({ title: "", course: "", description: "", subject: "Finance", visibility: "Private" });
     } catch {
       toast.error("Could not create notebook");
     } finally {
@@ -67,14 +69,14 @@ export function CreateNotebookModal({
       <div className="space-y-4">
         <Field label="Notebook name">
           <Input
-            placeholder="e.g. Organic Chemistry II"
+            placeholder="e.g. Corporate Finance"
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
           />
         </Field>
         <Field label="Course name" hint="The course code or title this notebook belongs to.">
           <Input
-            placeholder="e.g. CHEM 302"
+            placeholder="e.g. FIN 401"
             value={form.course}
             onChange={(e) => setForm({ ...form, course: e.target.value })}
           />
@@ -90,7 +92,7 @@ export function CreateNotebookModal({
         <div className="grid grid-cols-2 gap-3">
           <Field label="Subject category">
             <Select value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })}>
-              {subjects.map((s) => (
+              {BUSINESS_SUBJECTS.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </Select>

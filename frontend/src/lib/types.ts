@@ -24,7 +24,7 @@ export type Notebook = {
   questionsAsked: number;
 };
 
-export type DocType = "pdf" | "docx" | "ppt" | "txt" | "image" | "link" | "youtube" | "canvas";
+export type DocType = "pdf" | "docx" | "ppt" | "txt" | "image" | "link" | "youtube" | "canvas" | "reference";
 
 export type Document = {
   id: string;
@@ -99,6 +99,24 @@ export type CanvasCourse = {
   code: string;
   files: number;
   selected: boolean;
+};
+
+export type LlmCatalog = {
+  id: string;
+  name: string;
+  requiresApiKey?: boolean;
+  apiKeyHint?: string;
+  models: { id: string; name: string; default?: boolean }[];
+};
+
+export type UserSettings = {
+  llmProviderId: string;
+  llmModelId: string;
+  studyMode: string;
+  responseLength: string;
+  apiKeyStatus?: Record<string, boolean>;
+  activeProviderRequiresKey?: boolean;
+  embeddingProviderRequiresKey?: boolean;
 };
 
 export type Activity = {

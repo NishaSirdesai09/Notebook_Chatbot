@@ -8,11 +8,11 @@ export class ReferencesController {
 
   @Get()
   findAll() {
-    return this.referencesService.findAll();
+    return this.referencesService.list();
   }
 
   @Post()
   create(@Body() dto: CreateReferenceDto) {
-    return this.referencesService.create(dto);
+    return this.referencesService.add(dto);
   }
 }

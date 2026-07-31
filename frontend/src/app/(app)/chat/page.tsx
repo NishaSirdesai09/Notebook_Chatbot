@@ -4,77 +4,80 @@ import * as React from "react";
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Icon } from "@/components/icons";
-import { Button } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { Avatar, Badge } from "@/components/ui/primitives";
 import { LoadingState } from "@/components/ui/states";
 import { DocumentViewer } from "@/components/app/DocumentViewer";
 import { useToast } from "@/components/ui/Toast";
-import { chatHistory, documents, notebooks, suggestedPrompts } from "@/lib/mock-data";
+import { api } from "@/lib/api/endpoints";
+import { SUGGESTED_PROMPTS } from "@/lib/constants";
+import { useAuth } from "@/context/AuthContext";
+import { useDocuments } from "@/context/DocumentsContext";
+import { useNotebooks } from "@/context/NotebooksContext";
 import type { ChatMessage, Citation } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-const offTopic = ["weather", "stock", "recipe", "football", "movie", "celebrity"];
-
-function buildAnswer(question: string, id: string): ChatMessage {
-  const isOff = offTopic.some((w) => question.toLowerCase().includes(w));
-  if (isOff) {
-    return {
-      id,
-      role: "assistant",
-      content:
-        "I could not find this in your uploaded course material. Try adding more references or asking a more specific question.",
-      notFound: true,
-      feedback: null,
-    };
-  }
-  const base = chatHistory[1];
-  return { ...base, id, content: base.content, feedback: null };
-}
 
 function ChatInner() {
   const params = useSearchParams();
   const toast = useToast();
-  const initialNotebook = params.get("notebook") || notebooks[0].id;
+  const { user } = useAuth();
+  const { forNotebook, refresh: refreshDocs } = useDocuments();
+  const { notebooks, ready: notebooksReady } = useNotebooks();
+  const initialNotebook = params.get("notebook") || notebooks[0]?.id || "";
   const [activeNotebook, setActiveNotebook] = React.useState(initialNotebook);
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [input, setInput] = React.useState("");
   const [streaming, setStreaming] = React.useState(false);
+  const [loadingHistory, setLoadingHistory] = React.useState(false);
   const [activeCitation, setActiveCitation] = React.useState<Citation | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
-  const notebook = notebooks.find((n) => n.id === activeNotebook) ?? notebooks[0];
-  const notebookDocs = documents.filter((d) => d.notebookId === activeNotebook);
+  React.useEffect(() => {
+    if (notebooksReady && notebooks.length > 0 && !notebooks.find((n) => n.id === activeNotebook)) {
+      setActiveNotebook(notebooks[0].id);
+    }
+  }, [notebooksReady, notebooks, activeNotebook]);
+
+  React.useEffect(() => {
+    if (!activeNotebook) return;
+    setLoadingHistory(true);
+    Promise.all([api.chat.history(activeNotebook), refreshDocs(activeNotebook)])
+      .then(([history]) => setMessages(history))
+      .catch(() => toast.error("Could not load chat history"))
+      .finally(() => setLoadingHistory(false));
+  }, [activeNotebook, refreshDocs, toast]);
+
+  const notebook = notebooks.find((n) => n.id === activeNotebook);
+  const notebookDocs = activeNotebook ? forNotebook(activeNotebook) : [];
+  const userName = user?.name ?? "You";
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant" && !m.notFound);
 
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, streaming]);
 
-  function send(text: string) {
+  async function send(text: string) {
     const q = text.trim();
-    if (!q || streaming) return;
-    const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", content: q };
-    setMessages((m) => [...m, userMsg]);
+    if (!q || streaming || !activeNotebook) return;
+
+    const optimisticUser: ChatMessage = { id: `u-${Date.now()}`, role: "user", content: q };
+    setMessages((m) => [...m, optimisticUser]);
     setInput("");
     setStreaming(true);
 
-    const full = buildAnswer(q, `a-${Date.now()}`);
-    const streamId = full.id;
-    setMessages((m) => [...m, { ...full, content: "", explanation: undefined, keyPoints: undefined, practiceQuestion: undefined, citations: undefined }]);
-
-    const words = full.content.split(" ");
-    let i = 0;
-    const interval = setInterval(() => {
-      i += 2;
-      setMessages((m) =>
-        m.map((msg) => (msg.id === streamId ? { ...msg, content: words.slice(0, i).join(" ") } : msg))
-      );
-      if (i >= words.length) {
-        clearInterval(interval);
-        setMessages((m) => m.map((msg) => (msg.id === streamId ? full : msg)));
-        setStreaming(false);
-      }
-    }, 60);
+    try {
+      const answer = await api.chat.ask({
+        notebookId: activeNotebook,
+        message: q,
+        userId: user?.id,
+      });
+      setMessages((m) => [...m, answer]);
+    } catch {
+      toast.error("Could not get an answer", "Check that your materials are indexed and the LLM is configured.");
+      setMessages((m) => m.filter((msg) => msg.id !== optimisticUser.id));
+    } finally {
+      setStreaming(false);
+    }
   }
 
   function setFeedback(id: string, fb: "up" | "down") {
@@ -91,6 +94,27 @@ function ChatInner() {
       });
       setTimeout(() => send(lastUser.content), 50);
     }
+  }
+
+  if (!notebooksReady) {
+    return (
+      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+        <LoadingState label="Loading chat…" />
+      </div>
+    );
+  }
+
+  if (!notebook) {
+    return (
+      <div className="flex h-[calc(100vh-4rem)] flex-col items-center justify-center gap-4 px-4 text-center">
+        <Icon.Notebook className="h-12 w-12 text-ink-300" />
+        <h2 className="text-xl font-bold text-ink-900">Create a notebook first</h2>
+        <p className="max-w-md text-sm text-ink-500">
+          Chat is tied to a course notebook. Create one, upload materials, then ask questions with citations.
+        </p>
+        <ButtonLink href="/notebooks?create=1">Create notebook</ButtonLink>
+      </div>
+    );
   }
 
   return (
@@ -121,7 +145,8 @@ function ChatInner() {
             <p className="rounded-lg bg-slate-50 p-3 text-xs text-ink-400">No documents yet. Upload material to this notebook.</p>
           )}
           {notebookDocs.map((d) => {
-            const IconCmp = d.type === "pdf" ? Icon.FilePdf : d.type === "youtube" ? Icon.Video : Icon.Doc;
+            const IconCmp =
+              d.type === "reference" ? Icon.User : d.type === "pdf" ? Icon.FilePdf : d.type === "youtube" ? Icon.Video : Icon.Doc;
             return (
               <div key={d.id} className="flex items-center gap-2.5 rounded-lg border border-slate-100 p-2.5">
                 <span className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-100 text-ink-500">
@@ -158,7 +183,11 @@ function ChatInner() {
         </div>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin p-5">
-          {messages.length === 0 ? (
+          {loadingHistory ? (
+            <div className="flex h-full items-center justify-center">
+              <LoadingState label="Loading conversation…" />
+            </div>
+          ) : messages.length === 0 ? (
             <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center text-center">
               <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-600 to-accent-purple text-white shadow-glow">
                 <Icon.Sparkles className="h-7 w-7" />
@@ -166,7 +195,7 @@ function ChatInner() {
               <h2 className="mt-4 text-xl font-bold text-ink-900">Ask anything about {notebook.title}</h2>
               <p className="mt-1.5 text-sm text-ink-500">Every answer is grounded in your uploaded materials and cites its source.</p>
               <div className="mt-6 grid w-full gap-2 sm:grid-cols-2">
-                {suggestedPrompts.map((p) => (
+                {SUGGESTED_PROMPTS.map((p) => (
                   <button
                     key={p}
                     onClick={() => send(p)}
@@ -186,7 +215,7 @@ function ChatInner() {
                     <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-brand-600 px-4 py-2.5 text-sm text-white">
                       {m.content}
                     </div>
-                    <Avatar name="Maya Thompson" size={32} />
+                    <Avatar name={userName} size={32} />
                   </div>
                 ) : (
                   <AssistantMessage
@@ -208,7 +237,7 @@ function ChatInner() {
           <div className="mx-auto max-w-3xl">
             {messages.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
-                {suggestedPrompts.slice(0, 3).map((p) => (
+                {SUGGESTED_PROMPTS.slice(0, 3).map((p) => (
                   <button
                     key={p}
                     onClick={() => send(p)}

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { Icon } from "@/components/icons";
-import { mainNav, footerNav, professorNav } from "@/lib/nav";
+import { mainNav, footerNav } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 export function Sidebar({
@@ -36,7 +36,6 @@ export function Sidebar({
       >
         <IconCmp className={cn("h-5 w-5 shrink-0", active ? "text-brand-600" : "text-ink-400 group-hover:text-ink-600")} />
         {!collapsed && <span className="truncate">{label}</span>}
-        {!collapsed && active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-brand-600" />}
       </Link>
     );
   }
@@ -53,14 +52,8 @@ export function Sidebar({
         )}
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto scrollbar-thin px-3 py-4">
-        {!collapsed && <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-400">Workspace</p>}
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {mainNav.map((item) => (
-          <NavLink key={item.href} {...item} />
-        ))}
-        <div className="my-3 border-t border-slate-100" />
-        {!collapsed && <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-400">Teaching</p>}
-        {professorNav.map((item) => (
           <NavLink key={item.href} {...item} />
         ))}
       </nav>
@@ -85,7 +78,6 @@ export function Sidebar({
 
   return (
     <>
-      {/* desktop */}
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-30 hidden border-r border-slate-200 bg-white transition-[width] duration-200 lg:block",
@@ -95,7 +87,6 @@ export function Sidebar({
         {content}
       </aside>
 
-      {/* mobile */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm" onClick={onMobileClose} />

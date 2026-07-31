@@ -1,0 +1,70 @@
+{
+  "embedding": {
+    "providerId": "ollama",
+    "model": "nomic-embed-text",
+    "dimensions": 768
+  },
+  "providers": [
+    {
+      "id": "dashlab",
+      "name": "DashLab Studio",
+      "baseUrl": "https://llm.dashlab.studio/v1",
+      "apiKeyEnv": "DASHLAB_API_KEY",
+      "requiresApiKey": true,
+      "apiKeyHint": "From dashlab.studio → Keys tab",
+      "models": [
+        {
+          "id": "glm-4.7-flash:latest",
+          "name": "GLM 4.7 Flash",
+          "default": true,
+          "maxTokens": 2048
+        },
+        {
+          "id": "gemma4:31b",
+          "name": "Gemma 4 31B",
+          "maxTokens": 2048
+        }
+      ]
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "requiresApiKey": true,
+      "apiKeyHint": "sk-... from platform.openai.com",
+      "models": [
+        {
+          "id": "gpt-4o-mini",
+          "name": "GPT-4o Mini",
+          "maxTokens": 2048
+        },
+        {
+          "id": "gpt-4o",
+          "name": "GPT-4o",
+          "maxTokens": 4096
+        }
+      ]
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama (local)",
+      "baseUrl": "http://localhost:11434/v1",
+      "apiKeyEnv": "OLLAMA_API_KEY",
+      "requiresApiKey": false,
+      "models": [
+        {
+          "id": "llama3.2",
+          "name": "Llama 3.2",
+          "default": true,
+          "maxTokens": 2048
+        },
+        {
+          "id": "mistral",
+          "name": "Mistral",
+          "maxTokens": 2048
+        }
+      ]
+    }
+  ]
+}

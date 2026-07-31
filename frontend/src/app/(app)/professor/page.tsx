@@ -11,28 +11,28 @@ import { useToast } from "@/components/ui/Toast";
 import { relativeTime } from "@/lib/utils";
 
 const courseNotebooks = [
-  { id: "p1", title: "Organic Chemistry II", code: "CHEM 302", students: 128, materials: 24, updatedAt: "2026-06-04T09:00:00Z" },
-  { id: "p2", title: "Intro to Algorithms", code: "CS 201", students: 96, materials: 38, updatedAt: "2026-06-03T14:00:00Z" },
-  { id: "p3", title: "Thermodynamics", code: "PHYS 240", students: 74, materials: 19, updatedAt: "2026-06-01T11:00:00Z" },
+  { id: "p1", title: "Corporate Finance", code: "FIN 401", students: 128, materials: 24, updatedAt: "2026-06-04T09:00:00Z" },
+  { id: "p2", title: "Strategic Management", code: "MGMT 350", students: 96, materials: 38, updatedAt: "2026-06-03T14:00:00Z" },
+  { id: "p3", title: "Marketing Strategy", code: "MKTG 320", students: 74, materials: 19, updatedAt: "2026-06-01T11:00:00Z" },
 ];
 
 const questionTrends = [
-  { q: "What's the difference between SN1 and SN2?", count: 64, trend: "up" },
-  { q: "How do I read an NMR spectrum?", count: 47, trend: "up" },
-  { q: "When is a reaction first-order?", count: 33, trend: "flat" },
-  { q: "Why are tertiary carbocations stable?", count: 28, trend: "down" },
+  { q: "How do I apply Porter's Five Forces to this case?", count: 64, trend: "up" },
+  { q: "When should NPV and IRR disagree?", count: 47, trend: "up" },
+  { q: "What's the difference between segmentation and targeting?", count: 33, trend: "flat" },
+  { q: "How do I calculate WACC?", count: 28, trend: "down" },
 ];
 
 const weakAreas = [
-  { topic: "Stereochemistry", mastery: 38 },
-  { topic: "Reaction Energetics", mastery: 44 },
-  { topic: "Spectroscopy Interpretation", mastery: 51 },
+  { topic: "Capital Budgeting (NPV/IRR)", mastery: 38 },
+  { topic: "Case Write-up Structure", mastery: 44 },
+  { topic: "Financial Ratio Analysis", mastery: 51 },
 ];
 
 const materials = [
-  { name: "Lecture 12 — Spectroscopy.pptx", views: 412, type: "ppt" },
-  { name: "Problem Set 6 Solutions.pdf", views: 388, type: "pdf" },
-  { name: "Clayden Ch.15 reading.pdf", views: 301, type: "pdf" },
+  { name: "Prof. Williams — Porter Reference.pdf", views: 412, type: "reference" },
+  { name: "Tesla Strategy Case Study.pdf", views: 388, type: "pdf" },
+  { name: "Lecture 08 — Capital Structure.pptx", views: 301, type: "ppt" },
 ];
 
 export default function ProfessorPage() {
@@ -139,7 +139,7 @@ export default function ProfessorPage() {
             {materials.map((m) => (
               <div key={m.name} className="flex items-center gap-3 rounded-lg p-2 hover:bg-slate-50">
                 <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-ink-500">
-                  {m.type === "pdf" ? <Icon.FilePdf className="h-4 w-4" /> : <Icon.Doc className="h-4 w-4" />}
+                  {m.type === "reference" ? <Icon.User className="h-4 w-4" /> : m.type === "pdf" ? <Icon.FilePdf className="h-4 w-4" /> : <Icon.Doc className="h-4 w-4" />}
                 </span>
                 <p className="flex-1 truncate text-sm font-medium text-ink-800">{m.name}</p>
                 <span className="text-xs text-ink-400">{m.views} views</span>

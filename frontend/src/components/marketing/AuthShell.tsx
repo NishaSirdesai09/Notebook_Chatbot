@@ -2,10 +2,10 @@ import { Logo } from "@/components/Logo";
 import { Icon } from "@/components/icons";
 
 const highlights = [
-  "Chat with your own textbooks & notes",
+  "Chat with cases, slides & professor reference PDFs",
   "Every answer cites the exact source",
   "Auto summaries, quizzes & flashcards",
-  "Sync your real Canvas course material",
+  "Sync your Canvas course materials",
 ];
 
 export function AuthShell({ children }: { children: React.ReactNode }) {
@@ -42,10 +42,10 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
           </ul>
           <div className="mt-12 rounded-2xl bg-white/10 p-5 backdrop-blur">
             <p className="text-sm italic text-white/90">
-              “I uploaded my whole biology textbook and now I just ask it questions before exams. It
-              even tells me which page the answer is on.”
+              “I uploaded my professor&apos;s Porter reference PDF and our Tesla case study. Now I
+              prep for strategy exams by asking questions and getting answers with page citations.”
             </p>
-            <p className="mt-3 text-sm font-semibold">Priya S. — Pre-med, Class of 2027</p>
+            <p className="mt-3 text-sm font-semibold">Alex M. — MBA, Class of 2027</p>
           </div>
         </div>
       </div>

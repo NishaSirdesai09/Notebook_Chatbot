@@ -1,42 +1,40 @@
 /**
- * API client — NestJS-ready.
- *
- * This is the single integration boundary between the Next.js frontend and the
- * future NestJS backend. Every method maps 1:1 to a backend route. Today the
- * methods resolve mock data so the UI is fully interactive; to go live, set
- * `NEXT_PUBLIC_API_URL` and flip `USE_MOCK` to false (or rely on the env check).
- *
- * Backend services to plug in later:
- *   - NestJS REST API (this client's baseUrl)
- *   - PostgreSQL (notebooks, users, references)
- *   - S3 (document storage)
- *   - Vector DB (embeddings / retrieval)
- *   - OpenAI / LangChain (chat, summaries, quizzes)
- *   - Canvas API (course sync)
+ * API client — all requests go to the NestJS backend.
  */
-
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-export const USE_MOCK = !process.env.NEXT_PUBLIC_API_URL;
+
+const TOKEN_KEY = "nc_token";
+
+export function getAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setAccessToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearAccessToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
 
 export type RequestOptions = {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
-  token?: string;
+  formData?: FormData;
 };
 
-/**
- * Low-level fetch wrapper used by the typed endpoints in `endpoints.ts`.
- * When USE_MOCK is true this is bypassed in favor of in-memory data.
- */
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = "GET", body, token } = options;
+  const { method = "GET", body, formData } = options;
+  const token = getAccessToken();
+
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method,
     headers: {
-      "Content-Type": "application/json",
+      ...(formData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: formData ?? (body ? JSON.stringify(body) : undefined),
     cache: "no-store",
   });
 
@@ -44,6 +42,8 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     const message = await res.text().catch(() => res.statusText);
     throw new ApiError(res.status, message || "Request failed");
   }
+
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
